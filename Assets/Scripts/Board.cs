@@ -214,7 +214,13 @@ public class Board : MonoBehaviour
     // turns the board's game object to match its logical direction
     void animateRotate(int direction)
     {
-        transform.Rotate(0, 0, 90 * direction);
+        // rotate this board and all sibling boards/tilemaps
+        var tilemaps = transform.parent.GetComponentsInChildren<Tilemap>();
+
+        foreach (Tilemap tilemap in tilemaps)
+        {
+            tilemap.transform.Rotate(0, 0, 90 * direction);
+        }
     }
 
     // validates whether a position is on the board
