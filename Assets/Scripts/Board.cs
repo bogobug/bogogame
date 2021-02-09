@@ -1,6 +1,6 @@
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
 
 public class Board : MonoBehaviour
 {
@@ -19,7 +19,7 @@ public class Board : MonoBehaviour
     Piece[,] pieces;
 
     // reverse mapping piece => position
-    Dictionary<Piece, Vector2Int> positions;
+    public Dictionary<Piece, Vector2Int> positions;
 
     // hero piece
     Piece hero;
@@ -27,9 +27,13 @@ public class Board : MonoBehaviour
     // unit vector that represents the direction the top of the board is facing relative to the game
     Vector2Int orientation;
 
+    // board history collector/retriever
+    GameStateController gameStateController = new GameStateController();
+
+
     void Awake()
     {
-        orientation = Vector2Int.up; //north
+        orientation = Vector2Int.up; // north
 
         tiles = new Tile[size.x, size.y];
 
@@ -49,6 +53,16 @@ public class Board : MonoBehaviour
         foreach (Piece piece in pieceArr)
         {
             registerPiece(piece);
+        }
+    }
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.U))
+        {
+            Debug.Log("Undo Pressed");
+            orientation = gameStateController.undo(this, orientation);
+
         }
     }
 
@@ -84,6 +98,8 @@ public class Board : MonoBehaviour
     {
         if (direction == 0) { return; }
 
+        gameStateController.saveBoardState(positions, direction);
+
         orientation = rotateVector(orientation, direction);
         fall();
         animateRotate(direction);
@@ -92,6 +108,7 @@ public class Board : MonoBehaviour
     // moves the hero piece in response to user input
     public void moveHero(Vector2Int direction)
     {
+        gameStateController.saveBoardState(positions, 0);
         direction = adjustVector(direction);
         tryMovePiece(hero, direction);
         fall();
@@ -148,7 +165,7 @@ public class Board : MonoBehaviour
 
     // moves the piece to the position
     // assumes the position is vacant
-    void movePiece(Piece piece, Vector2Int position)
+    public void movePiece(Piece piece, Vector2Int position)
     {
         Vector2Int oldPos = positions[piece];
         pieces[oldPos.x, oldPos.y] = null;
@@ -218,7 +235,7 @@ public class Board : MonoBehaviour
     }
 
     // turns the board's game object to match its logical direction
-    void animateRotate(int direction)
+    public void animateRotate(int direction)
     {
         transform.Rotate(0, 0, 90 * direction);
     }
@@ -230,7 +247,7 @@ public class Board : MonoBehaviour
     }
 
     // direction > 0 for counter-clockwise, direction < 0 for clockwise
-    static Vector2Int rotateVector(Vector2Int vector, int direction)
+    public static Vector2Int rotateVector(Vector2Int vector, int direction)
     {
         if (direction == 0) { return vector; }
 
