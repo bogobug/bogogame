@@ -1,19 +1,11 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Tilemaps;
 
 public class Board : MonoBehaviour
 {
-    // size of the board
-    [SerializeField]
-    Vector2Int size = new Vector2Int(8, 8);
-
-    // background tiles
-    [SerializeField]
-    Tile tilePrefab = default;
-
-    // background tiles
-    Tile[,] tiles;
+    Vector2Int size;
 
     // pieces
     Piece[,] pieces;
@@ -27,59 +19,62 @@ public class Board : MonoBehaviour
     // unit vector that represents the direction the top of the board is facing relative to the game
     Vector2Int orientation;
 
+    // tilemap for the board
+    Tilemap tilemap;
+
+    // bottom left corner of board in Grid coordinates
+    Vector2Int cellOrigin;
+
     void Awake()
     {
+        // get tile map
+        tilemap = GetComponent<Tilemap>();
+        Debug.Assert(tilemap != null, "Board.Awake: tilemap not found");
+
+        // determine and set size
+        tilemap.CompressBounds();
+        size = v2(tilemap.size);          //save these or they will be lost
+        cellOrigin = v2(tilemap.origin);  //when we call tilemap.ClearAllTiles
+
+        // init members
         orientation = Vector2Int.up; //north
-
-        tiles = new Tile[size.x, size.y];
-
-        for (int x=0; x < size.x; x++)
-        {
-            for (int y=0; y < size.y; y++)
-            {
-                createTile(x, y);
-            }
-        }
-
         pieces = new Piece[size.x, size.y];
+        positions = new Dictionary<Piece, Vector2Int>();
 
-        Piece[] pieceArr = GetComponentsInChildren<Piece>();
-        positions = new Dictionary<Piece, Vector2Int>(pieceArr.Length);
+        // clear tiles
+        // -  we do this because the only items we care about in the tilemap
+        //    are GameObjects we painted with the prefab brush
+        //    any plain tiles are just there to determine the bounds of the board
+        //    and can be discarded
+        tilemap.ClearAllTiles();
 
-        foreach (Piece piece in pieceArr)
+        // find and register pieces
+        Piece[] piecesToRegister = GetComponentsInChildren<Piece>();
+        foreach (Piece piece in piecesToRegister)
         {
             registerPiece(piece);
         }
     }
 
-    // creates a background tile during Awake()
-    // these are used both for background graphics
-    // and as markers to move pieces to
-    void createTile(int x, int y)
-    {
-        // create tile and positions
-        Tile tile = tiles[x, y] = Instantiate<Tile>(tilePrefab);
-
-        // set transform
-        tile.transform.SetParent(transform, false);
-        tile.transform.localPosition = new Vector2(x - size.x/2, y - size.y/2);
-    }
-
     // registers a piece on the board for the first time, setting it at its initial position
     // public so that dynamic created pieces can call it on themselves
-    public void registerPiece(Piece piece)
+    void registerPiece(Piece piece)
     {
-        if (piece.hero)
+        // check if this piece is the hero
+        if (piece.GetComponent<HeroController>() != null)
         {
             Debug.Assert(hero == null, "Board.registerPiece: cannot have more than one hero");
             hero = piece;
         }
 
+        // get logical position
+        var logPosition = logFromWorld(piece.GetComponent<Transform>().position);
+
         // move to tile
-        setPiece(piece, piece.startPosition);
+        setPiece(piece, logPosition);
     }
 
-    // positive direction is counter-clockwise (as god intended)
+    // direction > 0 for counter-clockwise, direction < 0 for clockwise
     public void rotate(int direction)
     {
         if (direction == 0) { return; }
@@ -172,9 +167,8 @@ public class Board : MonoBehaviour
         pieces[position.x, position.y] = piece;
         positions[piece] = position;
 
-        // move game object
-        Tile tile = tiles[position.x, position.y];
-        piece.gameObject.transform.localPosition = tile.gameObject.transform.localPosition;
+        // update world position
+        piece.GetComponent<Transform>().position = worldFromLog(position);
     }
 
     // all pieces fall down
@@ -248,6 +242,30 @@ public class Board : MonoBehaviour
             orientation.y * vector.x - orientation.x * vector.y,
             orientation.x * vector.x + orientation.y * vector.y
             );
+    }
+
+    // converts a logical position to a world position
+    Vector3 worldFromLog(Vector2Int logicalPosition)
+    {
+        return tilemap.GetCellCenterWorld(v3(logicalPosition + cellOrigin));
+    }
+
+    // converts a world position to a logical position
+    Vector2Int logFromWorld(Vector3 worldPosition)
+    {
+        return v2(tilemap.WorldToCell(worldPosition)) - cellOrigin;
+    }
+
+    // convert a Vector3Int to a Vector2Int in the XY plane
+    static Vector2Int v2(Vector3Int v3)
+    {
+        return new Vector2Int(v3.x, v3.y);
+    }
+
+    // convert a Vector2Int in the XY plane to a Vector3Int
+    static Vector3Int v3(Vector2Int v2)
+    {
+        return new Vector3Int(v2.x, v2.y, 0);
     }
 
     // validate unity inspector size

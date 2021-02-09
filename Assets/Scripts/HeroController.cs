@@ -4,8 +4,13 @@ using UnityEngine;
 
 public class HeroController : MonoBehaviour
 {
-    [SerializeField]
-    Board board = default;
+    Board board;
+
+    void Awake()
+    {
+        board = GetComponentInParent<Board>();
+        Debug.Assert(board != null, "HeroController.Awake: board not found");
+    }
 
     // Start is called before the first frame update
     void Start()
@@ -15,7 +20,6 @@ public class HeroController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        
         if (Input.GetKeyDown(KeyCode.UpArrow))
         {
             board.moveHero(Vector2Int.up);

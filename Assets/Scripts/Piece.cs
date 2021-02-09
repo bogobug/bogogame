@@ -4,21 +4,5 @@ using UnityEngine;
 
 public class Piece : MonoBehaviour
 {
-    public Vector2Int startPosition;
-
     public bool pushable;
-
-    public bool hero;
-
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
 }
