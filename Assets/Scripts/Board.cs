@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 
 public class Board : MonoBehaviour
 {
@@ -63,6 +64,12 @@ public class Board : MonoBehaviour
             Debug.Log("Undo Pressed");
             orientation = gameStateController.undo(this, orientation);
 
+        }
+
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            gameStateController.reset(this, positions, orientation);
+            orientation = Vector2Int.up;
         }
     }
 
