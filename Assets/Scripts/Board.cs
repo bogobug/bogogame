@@ -187,7 +187,7 @@ public class Board : MonoBehaviour
 
         foreach (Piece piece in pieces)
         {
-            if (piece.pushable)
+            if (piece.gravity)
             {
                 fallPiece(piece, fallVector);
             }
@@ -208,7 +208,7 @@ public class Board : MonoBehaviour
 
             // cannot fall through (so no increment),
             // but since this piece might fall, we can keep looping
-            if (otherPiece.pushable) { continue; }
+            if (otherPiece.gravity) { continue; }
 
             // non-falling piece => we're done
             break;

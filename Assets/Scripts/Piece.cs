@@ -10,6 +10,8 @@ public class Piece : MonoBehaviour
 
     public bool hero;
 
+    public bool gravity;
+
     // Start is called before the first frame update
     void Start()
     {
