@@ -1,16 +1,15 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using System.Threading;
 
 public class GameStateController 
 {
     Stack<Dictionary<Piece, Vector2Int>> boardStates = new Stack<Dictionary<Piece, Vector2Int>>();
-    Stack<int> directions = new Stack<int>();
+    Stack<Vector2Int> orientations = new Stack<Vector2Int>();
     Dictionary<Piece, Vector2Int> initialBoardState;
-    bool lastStateReset = true;
+    bool lastActionReset = true;
 
-    public void saveBoardState(Dictionary<Piece, Vector2Int> boardState, int direction) 
+    public void saveBoardState(Dictionary<Piece, Vector2Int> boardState, Vector2Int orientation, bool reset) 
     {
         Dictionary<Piece, Vector2Int> boardStateCopy= new Dictionary<Piece, Vector2Int>(boardState);
         if (boardState.Count == 0)
@@ -18,14 +17,15 @@ public class GameStateController
             initialBoardState = boardStateCopy;
         }
         boardStates.Push(boardStateCopy);
-        directions.Push(direction);
+        orientations.Push(orientation);
         Debug.Log("Save " + boardStates.Count);
-        lastStateReset = false;
 
         if (initialBoardState == null)
         {
             initialBoardState = new Dictionary<Piece, Vector2Int>(boardStateCopy);
         }
+
+        lastActionReset = reset;
     }
 
     //undoes board state and returns new orientation to board
@@ -34,7 +34,7 @@ public class GameStateController
         if (boardStates.Count != 0)
         {
             Dictionary<Piece, Vector2Int> stateToReturnTo = boardStates.Pop();
-            int lastDirection = directions.Pop();
+            Vector2Int priorOrientation = orientations.Pop();
             Debug.Log("Undo " + boardStates.Count);
             var pieces = stateToReturnTo.Keys;
 
@@ -42,20 +42,25 @@ public class GameStateController
             {
                 Vector2Int lastPosition = stateToReturnTo[piece];
                 board.movePiece(piece, lastPosition);
+                Debug.Log("Loop" + piece);
             }
 
-            if (lastDirection != 0)
-            {
-                board.animateRotate(-lastDirection);
-                return Board.rotateVector(orientation, -lastDirection);
-            }
+            correctOrientation(board, orientation, priorOrientation);
+
+            return priorOrientation;
         }
-
         return orientation;
     }
 
-    public void reset(Board board, Dictionary<Piece, Vector2Int> currentBoardState, Vector2Int orientation)
+    public Vector2Int reset(Board board, Dictionary<Piece, Vector2Int> currentBoardState, Vector2Int orientation)
     {
+        if (lastActionReset)
+        {
+            return Vector2Int.up;
+        }
+
+        saveBoardState(currentBoardState, orientation, true);
+        
         var pieces = initialBoardState.Keys;
 
         foreach (var piece in pieces)
@@ -64,32 +69,33 @@ public class GameStateController
             board.movePiece(piece, lastPosition);
         }
 
-        if (orientation == Vector2Int.down)
+        correctOrientation(board, orientation, Vector2Int.up);
+
+        return Vector2Int.up;
+    }
+
+    void correctOrientation(Board board, Vector2Int currentOrientation, Vector2Int goalOrientation)
+    {
+        Vector2 currentOrientationVector = new Vector2(currentOrientation.x, currentOrientation.y);
+        Vector2 goalOrientationVector = new Vector2(goalOrientation.x, goalOrientation.y);
+
+        float rotationRequired = Vector2.SignedAngle(currentOrientationVector, goalOrientationVector);
+
+
+        if (rotationRequired == 90.0)
         {
             board.animateRotate(1);
-            board.animateRotate(1);
-            Board.rotateVector(orientation, 1);
-            Board.rotateVector(orientation, 1);
-        } 
-            
-        else if (orientation == Vector2Int.left)
-        {
-            board.animateRotate(1);
-            Board.rotateVector(orientation, 1);
         }
 
-        else if (orientation == Vector2Int.right)
+        else if (rotationRequired == -90.0)
         {
             board.animateRotate(-1);
-            Board.rotateVector(orientation, -1);
         }
 
-        if (lastStateReset == false)
+        else if ((rotationRequired == 180.0) || (rotationRequired == -180.0))
         {
-            saveBoardState(initialBoardState, 0);
-            lastStateReset = true;
+            board.animateRotate(1);
+            board.animateRotate(1);
         }
-            
-        
     }
 }

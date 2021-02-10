@@ -1,7 +1,6 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using System.Threading;
 
 public class Board : MonoBehaviour
 {
@@ -68,8 +67,7 @@ public class Board : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.R))
         {
-            gameStateController.reset(this, positions, orientation);
-            orientation = Vector2Int.up;
+            orientation = gameStateController.reset(this, positions, orientation);
         }
     }
 
@@ -105,7 +103,7 @@ public class Board : MonoBehaviour
     {
         if (direction == 0) { return; }
 
-        gameStateController.saveBoardState(positions, direction);
+        gameStateController.saveBoardState(positions, orientation, false);
 
         orientation = rotateVector(orientation, direction);
         fall();
@@ -115,9 +113,12 @@ public class Board : MonoBehaviour
     // moves the hero piece in response to user input
     public void moveHero(Vector2Int direction)
     {
-        gameStateController.saveBoardState(positions, 0);
+        Dictionary<Piece, Vector2Int> positionsToPush = new Dictionary<Piece, Vector2Int>(positions);
         direction = adjustVector(direction);
-        tryMovePiece(hero, direction);
+        if (tryMovePiece(hero, direction))
+        {
+            gameStateController.saveBoardState(positionsToPush, orientation, false);
+        }
         fall();
     }
 
