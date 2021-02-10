@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Tilemaps;
-using UnityEngine.UI;
 
 /* GLOSSARY:
 *   - logical position
@@ -45,7 +44,7 @@ public class Board : MonoBehaviour
     Piece[,] pieces;
 
     // reverse mapping piece => position
-    public Dictionary<Piece, Vector2Int> positions;
+    Dictionary<Piece, Vector2Int> positions;
 
     // hero piece
     Piece hero;
@@ -57,7 +56,7 @@ public class Board : MonoBehaviour
     Vector2Int orientation;
 
     // board history collector/retriever
-    GameStateController gameStateController = new GameStateController();
+    GameStateController stateController = new GameStateController();
 
     // set of solution positions on the board
     HashSet<Vector2Int> solutions;
@@ -112,6 +111,9 @@ public class Board : MonoBehaviour
         {
             registerPiece(piece);
         }
+
+        // save initial state
+        saveState();
     }
 
     // determines board size and cellOrigin (i.e. Grid coordinates)
@@ -148,21 +150,6 @@ public class Board : MonoBehaviour
         Debug.Assert(size.x > 0 && size.y > 0, "Board.determineBoardSize: invalid board size " + size);
     }
 
-    void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.U))
-        {
-            Debug.Log("Undo Pressed");
-            orientation = gameStateController.undo(this, orientation);
-
-        }
-
-        if (Input.GetKeyDown(KeyCode.R))
-        {
-            orientation = gameStateController.reset(this, positions, orientation);
-        }
-    }
-
     // checks if a tilemap has a tile at the given logical position
     bool hasTile(Tilemap tilemap, Vector2Int logicalPosition)
     {
@@ -174,7 +161,6 @@ public class Board : MonoBehaviour
     }
 
     // registers a piece on the board for the first time, setting it at its initial position
-    // public so that dynamic created pieces can call it on themselves
     void registerPiece(Piece piece)
     {
         // check if this piece is the hero
@@ -200,33 +186,47 @@ public class Board : MonoBehaviour
     {
         if (direction == 0) { return; }
 
-        gameStateController.saveBoardState(positions, orientation, false);
-
         orientation = rotateVector(orientation, direction);
-        animateRotate(direction);
         updateBoard();
     }
 
     // moves the hero piece in response to user input
     public void moveHero(Vector2Int direction)
     {
-        Dictionary<Piece, Vector2Int> positionsToPush = new Dictionary<Piece, Vector2Int>(positions);
         direction = adjustVector(direction);
         if (tryMovePiece(hero, direction))
         {
-            gameStateController.saveBoardState(positionsToPush, orientation, false);
             updateBoard();
         }
+    }
+
+    // undoes the previous move
+    public void undo()
+    {
+        restoreState(stateController.undoState());
+    }
+
+    // resets to the original state
+    public void reset()
+    {
+        restoreState(stateController.resetState());
     }
 
     #endregion
 
     #region board update/piece movement
 
+    void Update()
+    {
+        if (isAnimating) { updateAnimation(); }
+    }
+
     void updateBoard()
     {
         fall();
         checkSolution();
+        saveState();
+        updateWorldRotation();
     }
 
     // returns whether the move was successful (i.e. was not blocked)
@@ -280,7 +280,7 @@ public class Board : MonoBehaviour
 
     // moves the piece to the position
     // assumes the position is vacant
-    public void movePiece(Piece piece, Vector2Int position)
+    void movePiece(Piece piece, Vector2Int position)
     {
         Vector2Int oldPos = positions[piece];
         pieces[oldPos.x, oldPos.y] = null;
@@ -296,9 +296,6 @@ public class Board : MonoBehaviour
 
         Debug.Assert(onBoard(position),
             "Board.setPiece: position " + position + " lies outside board of size " + size);
-        
-        Debug.Assert(pieces[position.x, position.y] == null,
-            "Board.setPiece: position " + position + " already populated");
 
         // update logical position
         pieces[position.x, position.y] = piece;
@@ -350,8 +347,8 @@ public class Board : MonoBehaviour
 
     void checkSolution()
     {
-        // if we're already in the win state, do nothing
-        if (solved) { return; }
+        // if we're already in the win state or there is no win state, do nothing
+        if (solved || positions.Count == 0) { return; }
 
         foreach (Vector2Int position in solutions)
         {
@@ -369,14 +366,95 @@ public class Board : MonoBehaviour
 
     #endregion
 
+    #region game state history
+
+    // saves the current state to the stateController
+    void saveState()
+    {
+        GameState state = new GameState();
+        state.positions = new Dictionary<Piece, Vector2Int>(positions);  // copy positions
+        state.orientation = orientation;
+        state.solved = solved;
+        
+        stateController.saveState(state);
+    }
+
+    // restores a given state
+    void restoreState(GameState state)
+    {
+        if (state == null) { return; }
+
+        foreach (Piece piece in state.positions.Keys)
+        {
+            Vector2Int position = state.positions[piece];
+            movePiece(piece, position);
+        }
+
+        orientation = state.orientation;
+        updateWorldRotation(false);
+
+        solved = state.solved;
+    }
+
+    #endregion
+
     #region animation
 
-    // turns the board's game object to match its logical direction
-    public void animateRotate(int direction)
+    // current rotation of board
+    float currentAngle
     {
-        Quaternion heroRotation = hero.transform.rotation;  // save hero's rotation
-        transform.Rotate(0, 0, 90 * direction);
-        hero.transform.rotation = heroRotation;
+        get { return transform.rotation.eulerAngles.z; }
+        set { transform.Rotate(0, 0, value - currentAngle); }
+    }
+
+    // target rotation (if not animating, this shoulkd equal currentAngle)
+    float targetAngle;
+
+    // num seconds the animation takes
+    const float TIME_TO_ANIMATE = 0.5f;
+
+    // whether the board rotation is curently animating
+    bool isAnimating;
+
+    // time when the animation started
+    float animationStartTime;
+
+    float speed;
+
+    // turns the board's game object to match its logical direction
+    // we animate by default
+    void updateWorldRotation(bool animate = true)
+    {
+        targetAngle = Vector3.SignedAngle(Vector3.up, v3(orientation), Vector3.forward);
+
+        if (animate)
+        {
+            startAnimation();
+        }
+        else
+        {
+            currentAngle = targetAngle;
+        }
+    }
+
+    void startAnimation()
+    {
+        isAnimating = true;
+        animationStartTime = Time.time;
+        speed = (targetAngle - currentAngle) / TIME_TO_ANIMATE;
+    }
+
+    void updateAnimation()
+    {
+        if (Time.time > animationStartTime + TIME_TO_ANIMATE) { finishAnimation(); }
+
+        currentAngle = currentAngle + speed * Time.deltaTime;
+    }
+
+    void finishAnimation()
+    {
+        isAnimating = false;
+        currentAngle = targetAngle;
     }
 
     #endregion
@@ -390,7 +468,7 @@ public class Board : MonoBehaviour
     }
 
     // direction > 0 for counter-clockwise, direction < 0 for clockwise
-    public static Vector2Int rotateVector(Vector2Int vector, int direction)
+    static Vector2Int rotateVector(Vector2Int vector, int direction)
     {
         if (direction == 0) { return vector; }
 

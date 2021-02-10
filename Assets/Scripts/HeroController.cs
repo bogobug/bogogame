@@ -44,5 +44,13 @@ public class HeroController : MonoBehaviour
         {
             board.rotate(-1);
         }
+        else if (Input.GetKeyDown(KeyCode.Z))
+        {
+            board.undo();
+        }
+        else if (Input.GetKeyDown(KeyCode.R))
+        {
+            board.reset();
+        }
     }
 }

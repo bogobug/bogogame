@@ -2,100 +2,67 @@
 using System.Collections;
 using System.Collections.Generic;
 
+public class GameState
+{
+    // piece positions
+    public Dictionary<Piece, Vector2Int> positions;
+
+    // orientation of board
+    public Vector2Int orientation;
+
+    // whether the board is solved;
+    public bool solved;
+}
+
 public class GameStateController 
 {
-    Stack<Dictionary<Piece, Vector2Int>> boardStates = new Stack<Dictionary<Piece, Vector2Int>>();
-    Stack<Vector2Int> orientations = new Stack<Vector2Int>();
-    Dictionary<Piece, Vector2Int> initialBoardState;
-    bool lastActionReset = true;
+    // history of board states
+    Stack<GameState> stateHistory = new Stack<GameState>();
 
-    public void saveBoardState(Dictionary<Piece, Vector2Int> boardState, Vector2Int orientation, bool reset) 
+    // initial state
+    GameState initialState;
+
+    // current state
+    GameState currentState;
+
+    // save the current board state
+    public void saveState(GameState gameState) 
     {
-        Dictionary<Piece, Vector2Int> boardStateCopy= new Dictionary<Piece, Vector2Int>(boardState);
-        if (boardState.Count == 0)
+        if (currentState != null)
         {
-            initialBoardState = boardStateCopy;
+            stateHistory.Push(currentState);
         }
-        boardStates.Push(boardStateCopy);
-        orientations.Push(orientation);
-        Debug.Log("Save " + boardStates.Count);
-
-        if (initialBoardState == null)
-        {
-            initialBoardState = new Dictionary<Piece, Vector2Int>(boardStateCopy);
-        }
-
-        lastActionReset = reset;
-    }
-
-    //undoes board state and returns new orientation to board
-    public Vector2Int undo(Board board, Vector2Int orientation)
-    {
-        if (boardStates.Count != 0)
-        {
-            Dictionary<Piece, Vector2Int> stateToReturnTo = boardStates.Pop();
-            Vector2Int priorOrientation = orientations.Pop();
-            Debug.Log("Undo " + boardStates.Count);
-            var pieces = stateToReturnTo.Keys;
-
-            foreach (var piece in pieces)
-            {
-                Vector2Int lastPosition = stateToReturnTo[piece];
-                board.movePiece(piece, lastPosition);
-                Debug.Log("Loop" + piece);
-            }
-
-            correctOrientation(board, orientation, priorOrientation);
-
-            return priorOrientation;
-        }
-        return orientation;
-    }
-
-    public Vector2Int reset(Board board, Dictionary<Piece, Vector2Int> currentBoardState, Vector2Int orientation)
-    {
-        if (lastActionReset)
-        {
-            return Vector2Int.up;
-        }
-
-        saveBoardState(currentBoardState, orientation, true);
         
-        var pieces = initialBoardState.Keys;
-
-        foreach (var piece in pieces)
+        if (initialState == null)
         {
-            Vector2Int lastPosition = initialBoardState[piece];
-            board.movePiece(piece, lastPosition);
+            initialState = gameState;
         }
 
-        correctOrientation(board, orientation, Vector2Int.up);
-
-        return Vector2Int.up;
+        currentState = gameState;
     }
 
-    void correctOrientation(Board board, Vector2Int currentOrientation, Vector2Int goalOrientation)
+    // retrieve the previous state and make it the current state
+    // returns null if there is no previous state
+    public GameState undoState()
     {
-        Vector2 currentOrientationVector = new Vector2(currentOrientation.x, currentOrientation.y);
-        Vector2 goalOrientationVector = new Vector2(goalOrientation.x, goalOrientation.y);
+        if (stateHistory.Count == 0) { return null; }
 
-        float rotationRequired = Vector2.SignedAngle(currentOrientationVector, goalOrientationVector);
+        GameState prevState = stateHistory.Pop();
+        currentState = prevState;
+        return prevState;
+    }
 
+    // retrieve the initial state
+    // return null if we're already in it
+    public GameState resetState()
+    {
+        Debug.Assert(initialState != null, "GameStateController.resetState: initial state not set");
 
-        if (rotationRequired == 90.0)
-        {
-            board.animateRotate(1);
-        }
+        // don't save the initial state multiple times in a row
+        if (currentState == initialState) { return null; }
 
-        else if (rotationRequired == -90.0)
-        {
-            board.animateRotate(-1);
-        }
-
-        else if ((rotationRequired == 180.0) || (rotationRequired == -180.0))
-        {
-            board.animateRotate(1);
-            board.animateRotate(1);
-        }
+        stateHistory.Push(currentState);
+        currentState = initialState;
+        return initialState;
     }
 }
