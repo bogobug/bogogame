@@ -239,7 +239,9 @@ public class Board : MonoBehaviour
     // turns the board's game object to match its logical direction
     void animateRotate(int direction)
     {
+        Quaternion heroRotation = hero.transform.rotation;  // save hero's rotation
         transform.Rotate(0, 0, 90 * direction);
+        hero.transform.rotation = heroRotation;
     }
 
     // validates whether a position is on the board
