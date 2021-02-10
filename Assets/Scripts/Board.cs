@@ -2,21 +2,41 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Tilemaps;
+using UnityEngine.UI;
+
+/* GLOSSARY:
+*   - logical position
+*       integer position relative to the Board
+*   - cell position
+*       integer position relative to the Grid
+*   - local position (tilemap)
+*       integer position relative to a Tilemap
+*   - world position
+*       absolute position in Unity game space (i.e. gameObject.transform.position)
+*/
+
 
 public class Board : MonoBehaviour
 {
     // tilemap containing Piece GameObjects
+    //  - these should be placed on top of a ground tile
     [SerializeField]
     Tilemap pieceTilemap = default;
 
-    // tilemap containing ground tiles - this is used to determine the size of the board
+    // tilemap containing ground tiles
+    //  - these determine the spaces pieces can walk on and the size of the board
     [SerializeField]
     Tilemap groundTilemap = default;
+
+    // tilemap containing solution spaces
+    //  - these also count as "ground spaces" that you can walk on and determine the size of the board
+    [SerializeField]
+    Tilemap solutionTilemap = default;
 
     // grid for the board
     Grid grid;
 
-    // bottom left corner of board in cell space (i.e. Grid coordinates)
+    // bottom left corner of board in Grid coordinates
     Vector2Int cellOrigin;
 
     // dimensions of the board
@@ -37,6 +57,14 @@ public class Board : MonoBehaviour
     // unit vector that represents the direction the top of the board is facing relative to the game
     Vector2Int orientation;
 
+    // set of solution positions on the board
+    HashSet<Vector2Int> solutions;
+
+    // whether the board has been solved
+    bool solved;
+
+    #region initialization
+
     void Awake()
     {
         // validate required fields
@@ -48,25 +76,31 @@ public class Board : MonoBehaviour
         Debug.Assert(grid != null, "Board.Awake: grid not found");
 
         // determine and set size
-        //  - compress bounds because the tilemap bounds might extend beyond the actual tiles
-        groundTilemap.CompressBounds();
-        cellOrigin = v2(groundTilemap.origin);
-        size = v2(groundTilemap.size);
+        determineBoardSize();
 
         // init members
         orientation = Vector2Int.up; //north
         pieces = new Piece[size.x, size.y];
         positions = new Dictionary<Piece, Vector2Int>();
         ground = new bool[size.x, size.y];
+        solutions = new HashSet<Vector2Int>();
 
-        // set ground
+        // set ground and solution
         for (int x = 0; x < size.x; x++)
         {
             for (int y = 0; y < size.y; y++)
             {
-                // groundTilemap.HasTile accepts a cell position, not a local position, so we add cellOrigin
-                Vector3Int cellPosition = new Vector3Int(x + cellOrigin.x, y + cellOrigin.y, 0);
-                ground[x, y] = groundTilemap.HasTile(cellPosition);
+                Vector2Int position = new Vector2Int(x, y);
+                
+                if (hasTile(groundTilemap, position))
+                {
+                    ground[x, y] = true;
+                }
+                if (hasTile(solutionTilemap, position))
+                {
+                    ground[x, y] = true;
+                    solutions.Add(position);
+                }
             }
         }
 
@@ -76,6 +110,50 @@ public class Board : MonoBehaviour
         {
             registerPiece(piece);
         }
+    }
+
+    // determines board size and cellOrigin (i.e. Grid coordinates)
+    //  - this is determined by the bounds of each associated tilemap (except the pieceTilemap)
+    //    the bounds of the board are the smallest bounds possible that contain all the tilemaps
+    //    i.e. the right edge of the board is the furthest right edge of any of the tilemaps
+    void determineBoardSize()
+    {
+        Tilemap[] tilemaps = new[] { groundTilemap, solutionTilemap };
+
+        Vector2Int min = new Vector2Int(int.MaxValue, int.MaxValue);  //bottom right corner
+        Vector2Int max = new Vector2Int(int.MinValue, int.MinValue);  //top left corner
+
+        foreach (Tilemap tilemap in tilemaps)
+        {
+            if (tilemap == null) { continue; }
+
+            // compress bounds - otherwise, the bounds might extend beyond any actual tiles
+            tilemap.CompressBounds();
+
+            Vector2Int tmMin = v2(tilemap.cellBounds.min);
+            Vector2Int tmMax = v2(tilemap.cellBounds.max);
+
+            min.x = Mathf.Min(min.x, tmMin.x);
+            min.y = Mathf.Min(min.y, tmMin.y);
+
+            max.x = Mathf.Max(max.x, tmMax.x);
+            max.y = Mathf.Max(max.y ,tmMax.y);
+        }
+
+        cellOrigin = min;
+        size = max - min;
+
+        Debug.Assert(size.x > 0 && size.y > 0, "Board.determineBoardSize: invalid board size " + size);
+    }
+
+    // checks if a tilemap has a tile at the given logical position
+    bool hasTile(Tilemap tilemap, Vector2Int logicalPosition)
+    {
+        if (tilemap == null) { return false; }
+
+        // tilemap.HasTile accepts a Vector3Int cell position, so convert to that
+        Vector3Int cellPosition = v3(logicalPosition + cellOrigin);
+        return tilemap.HasTile(cellPosition);
     }
 
     // registers a piece on the board for the first time, setting it at its initial position
@@ -96,14 +174,18 @@ public class Board : MonoBehaviour
         setPiece(piece, logPosition);
     }
 
+    #endregion
+
+    #region input entry points
+
     // direction > 0 for counter-clockwise, direction < 0 for clockwise
     public void rotate(int direction)
     {
         if (direction == 0) { return; }
 
         orientation = rotateVector(orientation, direction);
-        fall();
         animateRotate(direction);
+        updateBoard();
     }
 
     // moves the hero piece in response to user input
@@ -111,7 +193,17 @@ public class Board : MonoBehaviour
     {
         direction = adjustVector(direction);
         tryMovePiece(hero, direction);
+        updateBoard();
+    }
+
+    #endregion
+
+    #region board update/piece movement
+
+    void updateBoard()
+    {
         fall();
+        checkSolution();
     }
 
     // returns whether the move was successful (i.e. was not blocked)
@@ -127,7 +219,7 @@ public class Board : MonoBehaviour
         Vector2Int newPos = positions[piece] + move;
 
         // check if move lies inside board or is off ground
-        if (!onBoard(newPos) || !onGround(newPos))
+        if (!onBoard(newPos))
         {
             return false;
         }
@@ -185,9 +277,6 @@ public class Board : MonoBehaviour
         Debug.Assert(pieces[position.x, position.y] == null,
             "Board.setPiece: position " + position + " already populated");
 
-        Debug.Assert(onGround(position),
-            "Board.setPiece: position " + position + " does not have ground beneath it");
-
         // update logical position
         pieces[position.x, position.y] = piece;
         positions[piece] = position;
@@ -236,6 +325,29 @@ public class Board : MonoBehaviour
         movePiece(piece, newPos);
     }
 
+    void checkSolution()
+    {
+        // if we're already in the win state, do nothing
+        if (solved) { return; }
+
+        foreach (Vector2Int position in solutions)
+        {
+            Piece piece = getPiece(position);
+            if (piece == null || piece == hero)
+            {
+                return;
+            }
+        }
+
+        // if we got here, the board is solved
+        solved = true;
+        Debug.Log("you win!!!!!!");
+    }
+
+    #endregion
+
+    #region animation
+
     // turns the board's game object to match its logical direction
     void animateRotate(int direction)
     {
@@ -244,19 +356,14 @@ public class Board : MonoBehaviour
         hero.transform.rotation = heroRotation;
     }
 
+    #endregion
+
+    #region helpers
+
     // validates whether a position is on the board
     bool onBoard(Vector2Int position)
     {
-        return 0 <= position.x && position.x < size.x && 0 <= position.y && position.y < size.y;
-    }
-
-    // validates whether a position has ground underneath it
-    bool onGround(Vector2Int position)
-    {
-        Debug.Assert(onBoard(position), 
-            "Board.onGround: position " + position + " outside of board of size " + size);
-
-        return ground[position.x, position.y];
+        return 0 <= position.x && position.x < size.x && 0 <= position.y && position.y < size.y && ground[position.x, position.y];
     }
 
     // direction > 0 for counter-clockwise, direction < 0 for clockwise
@@ -304,11 +411,5 @@ public class Board : MonoBehaviour
         return new Vector3Int(v2.x, v2.y, 0);
     }
 
-    // validate unity inspector size
-    void OnValidate()
-    {
-        if (size.x < 2) { size.x = 2; }
-
-        if (size.y < 2) { size.y = 2; }
-    }
+    #endregion
 }
