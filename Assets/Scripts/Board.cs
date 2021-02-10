@@ -5,9 +5,24 @@ using UnityEngine.Tilemaps;
 
 public class Board : MonoBehaviour
 {
+    // tilemap containing Piece GameObjects
+    [SerializeField]
+    Tilemap pieceTilemap = default;
+
+    // tilemap containing ground tiles - this is used to determine the size of the board
+    [SerializeField]
+    Tilemap groundTilemap = default;
+
+    // grid for the board
+    Grid grid;
+
+    // bottom left corner of board in cell space (i.e. Grid coordinates)
+    Vector2Int cellOrigin;
+
+    // dimensions of the board
     Vector2Int size;
 
-    // pieces
+    // pieces on the board (size.x by size.y array)
     Piece[,] pieces;
 
     // reverse mapping piece => position
@@ -16,40 +31,47 @@ public class Board : MonoBehaviour
     // hero piece
     Piece hero;
 
+    // true if there is ground at a location, false if not (size.x by size.y array)
+    bool[,] ground;
+
     // unit vector that represents the direction the top of the board is facing relative to the game
     Vector2Int orientation;
 
-    // tilemap for the board
-    Tilemap tilemap;
-
-    // bottom left corner of board in Grid coordinates
-    Vector2Int cellOrigin;
-
     void Awake()
     {
+        // validate required fields
+        Debug.Assert(pieceTilemap != null, "Board.Awake: piece tilemap not found");
+        Debug.Assert(groundTilemap != null, "Board.Awake: ground tilemap not found");
+
         // get tile map
-        tilemap = GetComponent<Tilemap>();
-        Debug.Assert(tilemap != null, "Board.Awake: tilemap not found");
+        grid = GetComponent<Grid>();
+        Debug.Assert(grid != null, "Board.Awake: grid not found");
 
         // determine and set size
-        tilemap.CompressBounds();
-        size = v2(tilemap.size);          //save these or they will be lost
-        cellOrigin = v2(tilemap.origin);  //when we call tilemap.ClearAllTiles
+        //  - compress bounds because the tilemap bounds might extend beyond the actual tiles
+        groundTilemap.CompressBounds();
+        cellOrigin = v2(groundTilemap.origin);
+        size = v2(groundTilemap.size);
 
         // init members
         orientation = Vector2Int.up; //north
         pieces = new Piece[size.x, size.y];
         positions = new Dictionary<Piece, Vector2Int>();
+        ground = new bool[size.x, size.y];
 
-        // clear tiles
-        // -  we do this because the only items we care about in the tilemap
-        //    are GameObjects we painted with the prefab brush
-        //    any plain tiles are just there to determine the bounds of the board
-        //    and can be discarded
-        tilemap.ClearAllTiles();
+        // set ground
+        for (int x = 0; x < size.x; x++)
+        {
+            for (int y = 0; y < size.y; y++)
+            {
+                // groundTilemap.HasTile accepts a cell position, not a local position, so we add cellOrigin
+                Vector3Int cellPosition = new Vector3Int(x + cellOrigin.x, y + cellOrigin.y, 0);
+                ground[x, y] = groundTilemap.HasTile(cellPosition);
+            }
+        }
 
         // find and register pieces
-        Piece[] piecesToRegister = GetComponentsInChildren<Piece>();
+        Piece[] piecesToRegister = pieceTilemap.GetComponentsInChildren<Piece>();
         foreach (Piece piece in piecesToRegister)
         {
             registerPiece(piece);
@@ -104,8 +126,8 @@ public class Board : MonoBehaviour
 
         Vector2Int newPos = positions[piece] + move;
 
-        // check if move lies inside board
-        if (!onBoard(newPos))
+        // check if move lies inside board or is off ground
+        if (!onBoard(newPos) || !onGround(newPos))
         {
             return false;
         }
@@ -163,6 +185,9 @@ public class Board : MonoBehaviour
         Debug.Assert(pieces[position.x, position.y] == null,
             "Board.setPiece: position " + position + " already populated");
 
+        Debug.Assert(onGround(position),
+            "Board.setPiece: position " + position + " does not have ground beneath it");
+
         // update logical position
         pieces[position.x, position.y] = piece;
         positions[piece] = position;
@@ -214,19 +239,22 @@ public class Board : MonoBehaviour
     // turns the board's game object to match its logical direction
     void animateRotate(int direction)
     {
-        // rotate this board and all sibling boards/tilemaps
-        var tilemaps = transform.parent.GetComponentsInChildren<Tilemap>();
-
-        foreach (Tilemap tilemap in tilemaps)
-        {
-            tilemap.transform.Rotate(0, 0, 90 * direction);
-        }
+        transform.Rotate(0, 0, 90 * direction);
     }
 
     // validates whether a position is on the board
     bool onBoard(Vector2Int position)
     {
         return 0 <= position.x && position.x < size.x && 0 <= position.y && position.y < size.y;
+    }
+
+    // validates whether a position has ground underneath it
+    bool onGround(Vector2Int position)
+    {
+        Debug.Assert(onBoard(position), 
+            "Board.onGround: position " + position + " outside of board of size " + size);
+
+        return ground[position.x, position.y];
     }
 
     // direction > 0 for counter-clockwise, direction < 0 for clockwise
@@ -253,13 +281,13 @@ public class Board : MonoBehaviour
     // converts a logical position to a world position
     Vector3 worldFromLog(Vector2Int logicalPosition)
     {
-        return tilemap.GetCellCenterWorld(v3(logicalPosition + cellOrigin));
+        return grid.GetCellCenterWorld(v3(logicalPosition + cellOrigin));
     }
 
     // converts a world position to a logical position
     Vector2Int logFromWorld(Vector3 worldPosition)
     {
-        return v2(tilemap.WorldToCell(worldPosition)) - cellOrigin;
+        return v2(grid.WorldToCell(worldPosition)) - cellOrigin;
     }
 
     // convert a Vector3Int to a Vector2Int in the XY plane
