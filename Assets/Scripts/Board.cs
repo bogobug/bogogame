@@ -279,11 +279,19 @@ public class Board : MonoBehaviour
     }
 
     // moves the piece to the position
-    // assumes the position is vacant
+    //  - if there is already a piece at that position, it will get overwritten
     void movePiece(Piece piece, Vector2Int position)
     {
         Vector2Int oldPos = positions[piece];
-        pieces[oldPos.x, oldPos.y] = null;
+
+        // check if we're still at the old position
+        //  - this might not be the case when processing moves in bulk
+        //    (i.e. restoreState or fall) because another piece
+        //    could have already moved to the position this piece was at
+        if (pieces[oldPos.x, oldPos.y] == piece)
+        {
+            pieces[oldPos.x, oldPos.y] = null;
+        }
 
         setPiece(piece, position);
     }
@@ -327,7 +335,7 @@ public class Board : MonoBehaviour
     {
         Vector2Int newPos = positions[piece];
 
-        for (Vector2Int pos = positions[piece]; onBoard(pos); pos += fallVector)
+        for (Vector2Int pos = positions[piece] + fallVector; onBoard(pos); pos += fallVector)
         {
             Piece otherPiece = getPiece(pos);
             
