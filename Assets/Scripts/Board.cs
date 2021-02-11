@@ -186,7 +186,8 @@ public class Board : MonoBehaviour
     {
         if (direction == 0) { return; }
 
-        orientation = rotateVector(orientation, direction);
+        Vector2Int newOrientation = rotateVector(orientation, direction);
+        setOrientation(newOrientation, true);
         updateBoard();
     }
 
@@ -226,7 +227,6 @@ public class Board : MonoBehaviour
         fall();
         checkSolution();
         saveState();
-        updateWorldRotation();
     }
 
     // returns whether the move was successful (i.e. was not blocked)
@@ -390,25 +390,13 @@ public class Board : MonoBehaviour
             movePiece(piece, position);
         }
 
-        orientation = state.orientation;
-        updateWorldRotation(false);
-
+        setOrientation(state.orientation);
         solved = state.solved;
     }
 
     #endregion
 
     #region animation
-
-    // current rotation of board
-    float currentAngle
-    {
-        get { return transform.rotation.eulerAngles.z; }
-        set { transform.Rotate(0, 0, value - currentAngle); }
-    }
-
-    // target rotation (if not animating, this shoulkd equal currentAngle)
-    float targetAngle;
 
     // num seconds the animation takes
     const float TIME_TO_ANIMATE = 0.5f;
@@ -419,42 +407,71 @@ public class Board : MonoBehaviour
     // time when the animation started
     float animationStartTime;
 
-    float speed;
+    // rotation of the board at the start of the animation
+    Quaternion startRotation;
 
-    // turns the board's game object to match its logical direction
-    // we animate by default
-    void updateWorldRotation(bool animate = true)
+    // rotation of the board at the end of the animation
+    Quaternion targetRotation;
+
+    // set the logical orientation of the board while also setting the world rotation of the board game object
+    // optionally animate the world rotation
+    void setOrientation(Vector2Int newOrientation, bool animate = false)
     {
-        targetAngle = Vector3.SignedAngle(Vector3.up, v3(orientation), Vector3.forward);
+        // determine how much the board needs to rotate
+        Quaternion rotation = Quaternion.FromToRotation(v3(orientation), v3(newOrientation));
+
+        orientation = newOrientation;
 
         if (animate)
         {
-            startAnimation();
+            startAnimation(rotation);
         }
         else
         {
-            currentAngle = targetAngle;
+            transform.rotation *= rotation;
         }
     }
 
-    void startAnimation()
+    // argument specifies the rotation to undergo
+    void startAnimation(Quaternion rotation)
     {
-        isAnimating = true;
-        animationStartTime = Time.time;
-        speed = (targetAngle - currentAngle) / TIME_TO_ANIMATE;
+        Debug.Log("current: " + transform.rotation.eulerAngles.z + " | target: " + rotation.eulerAngles.z);
+
+        // already animating - just modify existing parameters
+        if (isAnimating)
+        {
+            animationStartTime = Time.time;
+            startRotation = transform.rotation;
+            targetRotation *= rotation;
+        }
+        else
+        {
+            isAnimating = true;
+            animationStartTime = Time.time;
+
+            startRotation = transform.rotation;
+            targetRotation = startRotation * rotation;
+        }
     }
 
     void updateAnimation()
     {
-        if (Time.time > animationStartTime + TIME_TO_ANIMATE) { finishAnimation(); }
-
-        currentAngle = currentAngle + speed * Time.deltaTime;
+        if (Time.time < animationStartTime + TIME_TO_ANIMATE) 
+        { 
+            // fraction of the way there between 0 and 1
+            float progress = (Time.time - animationStartTime) / TIME_TO_ANIMATE;
+            transform.rotation = Quaternion.Slerp(startRotation, targetRotation, progress);
+        }
+        else
+        {
+            finishAnimation(); 
+        }
     }
 
     void finishAnimation()
     {
         isAnimating = false;
-        currentAngle = targetAngle;
+        transform.rotation = targetRotation;
     }
 
     #endregion
