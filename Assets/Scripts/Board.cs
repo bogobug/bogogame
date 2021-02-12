@@ -109,6 +109,7 @@ public class Board : MonoBehaviour
         Piece[] piecesToRegister = pieceTilemap.GetComponentsInChildren<Piece>();
         foreach (Piece piece in piecesToRegister)
         {
+            Debug.Log(piece);
             registerPiece(piece);
         }
 
@@ -226,7 +227,7 @@ public class Board : MonoBehaviour
     {
         fall();
         checkSolution();
-        saveState();
+        saveState();   
     }
 
     // returns whether the move was successful (i.e. was not blocked)
@@ -313,25 +314,30 @@ public class Board : MonoBehaviour
         piece.GetComponent<Transform>().position = worldFromLog(position);
     }
 
-    // all pieces fall down
+    // cause all pieces to fall (unless they aren't subject to gravity)
     void fall()
     {
         Vector2Int fallVector = adjustVector(Vector2Int.down);
+        var newPositions = new Dictionary<Piece, Vector2Int>();
 
-        Piece[] pieces = new Piece[positions.Count];
-        positions.Keys.CopyTo(pieces, 0);
-
-        foreach (Piece piece in pieces)
+        // determine new position of each piece
+        foreach (Piece piece in positions.Keys)
         {
             if (piece.gravity)
             {
-                fallPiece(piece, fallVector);
+                newPositions[piece] = getFallPos(piece, fallVector);
             }
+        }
+
+        // move pieces to new positions
+        foreach (Piece piece in newPositions.Keys)
+        {
+            movePiece(piece, newPositions[piece]);
         }
     }
 
-    // given piece falls down
-    void fallPiece(Piece piece, Vector2Int fallVector)
+    // determines the positon the given piece will be in after falling
+    Vector2Int getFallPos(Piece piece, Vector2Int fallVector)
     {
         Vector2Int newPos = positions[piece];
 
@@ -350,7 +356,7 @@ public class Board : MonoBehaviour
             break;
         }
 
-        movePiece(piece, newPos);
+        return newPos;
     }
 
     void checkSolution()
@@ -443,8 +449,6 @@ public class Board : MonoBehaviour
     // argument specifies the rotation to undergo
     void startAnimation(Quaternion rotation)
     {
-        Debug.Log("current: " + transform.rotation.eulerAngles.z + " | target: " + rotation.eulerAngles.z);
-
         // already animating - just modify existing parameters
         if (isAnimating)
         {
