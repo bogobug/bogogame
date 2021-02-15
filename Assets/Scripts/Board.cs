@@ -441,7 +441,7 @@ public class Board : MonoBehaviour
     // num seconds the animation takes
     const float TIME_TO_ANIMATE = 0.5f;
 
-    // whether the board rotation is curently animating
+    // whether the board rotation is currently animating
     bool isAnimating;
 
     // time when the animation started
@@ -475,6 +475,7 @@ public class Board : MonoBehaviour
     // argument specifies the rotation to undergo
     void startAnimation(Quaternion rotation)
     {
+        Debug.Log("Entered startAnimation");
         // already animating - just modify existing parameters
         if (isAnimating)
         {
