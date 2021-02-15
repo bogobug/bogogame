@@ -31,6 +31,11 @@ public class Board : MonoBehaviour
     [SerializeField]
     Tilemap solutionTilemap = default;
 
+    // tilemap containing rotater spaces
+    //  - these determine where the hero can rotate the board from
+    [SerializeField]
+    Tilemap rotaterTilemap = default; 
+
     // grid for the board
     Grid grid;
 
@@ -61,6 +66,9 @@ public class Board : MonoBehaviour
     // set of solution positions on the board
     HashSet<Vector2Int> solutions;
 
+    // set of rotation positions on the board 
+    HashSet<Vector2Int> rotaters;
+
     // whether the board has been solved
     bool solved;
 
@@ -85,6 +93,7 @@ public class Board : MonoBehaviour
         positions = new Dictionary<Piece, Vector2Int>();
         ground = new bool[size.x, size.y];
         solutions = new HashSet<Vector2Int>();
+        rotaters = new HashSet<Vector2Int>();
 
         // set ground and solution
         for (int x = 0; x < size.x; x++)
@@ -101,6 +110,11 @@ public class Board : MonoBehaviour
                 {
                     ground[x, y] = true;
                     solutions.Add(position);
+                }
+                if (hasTile(rotaterTilemap, position))
+                {
+                    ground[x, y] = true;
+                    rotaters.Add(position);
                 }
             }
         }
@@ -123,7 +137,7 @@ public class Board : MonoBehaviour
     //    i.e. the right edge of the board is the furthest right edge of any of the tilemaps
     void determineBoardSize()
     {
-        Tilemap[] tilemaps = new[] { groundTilemap, solutionTilemap };
+        Tilemap[] tilemaps = new[] { groundTilemap, solutionTilemap, rotaterTilemap };
 
         Vector2Int min = new Vector2Int(int.MaxValue, int.MaxValue);  //bottom right corner
         Vector2Int max = new Vector2Int(int.MinValue, int.MinValue);  //top left corner
@@ -186,6 +200,18 @@ public class Board : MonoBehaviour
     public void rotate(int direction)
     {
         if (direction == 0) { return; }
+
+        bool canRotate = false;
+
+        foreach(Vector2Int rotaterPosition in rotaters)
+        {
+            if (rotaterPosition == positions[hero])
+            {
+                canRotate = true;
+            }
+        }
+
+        if (!canRotate) { return; }
 
         Vector2Int newOrientation = rotateVector(orientation, direction);
         setOrientation(newOrientation, true);
@@ -362,7 +388,7 @@ public class Board : MonoBehaviour
     void checkSolution()
     {
         // if we're already in the win state or there is no win state, do nothing
-        if (solved || positions.Count == 0) { return; }
+        if (solved || solutions.Count == 0) { return; }
 
         foreach (Vector2Int position in solutions)
         {
