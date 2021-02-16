@@ -32,7 +32,7 @@ public class Board : MonoBehaviour
 
     // tile for rotation spaces
     [SerializeField]
-    Tile rotaterTile = default;
+    Tile rotaterTile = default; 
 
     // grid for the board
     Grid grid;
@@ -99,7 +99,6 @@ public class Board : MonoBehaviour
             for (int y = 0; y < size.y; y++)
             {
                 Vector2Int position = new Vector2Int(x, y);
-
                 Tile tile = getTile(groundTilemap, position);
                 if (tile != null)
                 {
