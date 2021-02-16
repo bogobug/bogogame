@@ -26,15 +26,13 @@ public class Board : MonoBehaviour
     [SerializeField]
     Tilemap groundTilemap = default;
 
-    // tilemap containing solution spaces
-    //  - these also count as "ground spaces" that you can walk on and determine the size of the board
+    // tile for solution spaces
     [SerializeField]
-    Tilemap solutionTilemap = default;
+    Tile solutionTile = default;
 
-    // tilemap containing rotater spaces
-    //  - these determine where the hero can rotate the board from
+    // tile for rotation spaces
     [SerializeField]
-    Tilemap rotaterTilemap = default; 
+    Tile rotaterTile = default;
 
     // grid for the board
     Grid grid;
@@ -66,8 +64,8 @@ public class Board : MonoBehaviour
     // set of solution positions on the board
     HashSet<Vector2Int> solutions;
 
-    // set of rotation positions on the board 
-    HashSet<Vector2Int> rotaters;
+    // set of rotation positions on the board mapped to the number of remaining rotations for a given rotater 
+    Dictionary<Vector2Int, int> rotaters;
 
     // whether the board has been solved
     bool solved;
@@ -93,7 +91,7 @@ public class Board : MonoBehaviour
         positions = new Dictionary<Piece, Vector2Int>();
         ground = new bool[size.x, size.y];
         solutions = new HashSet<Vector2Int>();
-        rotaters = new HashSet<Vector2Int>();
+        rotaters = new Dictionary<Vector2Int, int>();
 
         // set ground and solution
         for (int x = 0; x < size.x; x++)
@@ -101,20 +99,20 @@ public class Board : MonoBehaviour
             for (int y = 0; y < size.y; y++)
             {
                 Vector2Int position = new Vector2Int(x, y);
-                
-                if (hasTile(groundTilemap, position))
+
+                Tile tile = getTile(groundTilemap, position);
+                if (tile != null)
                 {
                     ground[x, y] = true;
-                }
-                if (hasTile(solutionTilemap, position))
-                {
-                    ground[x, y] = true;
-                    solutions.Add(position);
-                }
-                if (hasTile(rotaterTilemap, position))
-                {
-                    ground[x, y] = true;
-                    rotaters.Add(position);
+
+                    if (tile == solutionTile)
+                    {
+                        solutions.Add(position);
+                    }
+                    else if (tile == rotaterTile)
+                    {
+                        rotaters.Add(position, 2);
+                    }
                 }
             }
         }
@@ -137,7 +135,7 @@ public class Board : MonoBehaviour
     //    i.e. the right edge of the board is the furthest right edge of any of the tilemaps
     void determineBoardSize()
     {
-        Tilemap[] tilemaps = new[] { groundTilemap, solutionTilemap, rotaterTilemap };
+        Tilemap[] tilemaps = new[] { groundTilemap };
 
         Vector2Int min = new Vector2Int(int.MaxValue, int.MaxValue);  //bottom right corner
         Vector2Int max = new Vector2Int(int.MinValue, int.MinValue);  //top left corner
@@ -165,14 +163,14 @@ public class Board : MonoBehaviour
         Debug.Assert(size.x > 0 && size.y > 0, "Board.determineBoardSize: invalid board size " + size);
     }
 
-    // checks if a tilemap has a tile at the given logical position
-    bool hasTile(Tilemap tilemap, Vector2Int logicalPosition)
+    // returns the tile at the given logical position
+    Tile getTile(Tilemap tilemap, Vector2Int logicalPosition)
     {
-        if (tilemap == null) { return false; }
+        if (tilemap == null) { return null; }
 
-        // tilemap.HasTile accepts a Vector3Int cell position, so convert to that
+        // tilemap.GetTile accepts a Vector3Int cell position, so convert to that
         Vector3Int cellPosition = v3(logicalPosition + cellOrigin);
-        return tilemap.HasTile(cellPosition);
+        return tilemap.GetTile<Tile>(cellPosition);
     }
 
     // registers a piece on the board for the first time, setting it at its initial position
@@ -203,11 +201,14 @@ public class Board : MonoBehaviour
 
         bool canRotate = false;
 
-        foreach(Vector2Int rotaterPosition in rotaters)
+        ArrayList rotaterKeys = new ArrayList(rotaters.Keys);
+
+        foreach(Vector2Int rotaterPosition in rotaterKeys)
         {
-            if (rotaterPosition == positions[hero])
+            if (rotaterPosition == positions[hero] && rotaters[rotaterPosition] > 0)
             {
                 canRotate = true;
+                rotaters[rotaterPosition]--;
             }
         }
 
@@ -413,6 +414,7 @@ public class Board : MonoBehaviour
     {
         GameState state = new GameState();
         state.positions = new Dictionary<Piece, Vector2Int>(positions);  // copy positions
+        state.rotaters = new Dictionary<Vector2Int, int>(rotaters);  // copy rotaters 
         state.orientation = orientation;
         state.solved = solved;
         
@@ -431,6 +433,7 @@ public class Board : MonoBehaviour
         }
 
         setOrientation(state.orientation);
+        rotaters = new Dictionary<Vector2Int, int>(state.rotaters);
         solved = state.solved;
     }
 

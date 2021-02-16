@@ -7,6 +7,9 @@ public class GameState
     // piece positions
     public Dictionary<Piece, Vector2Int> positions;
 
+    // rotater dictionary
+    public Dictionary<Vector2Int, int> rotaters;
+
     // orientation of board
     public Vector2Int orientation;
 
