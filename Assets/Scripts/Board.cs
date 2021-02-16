@@ -26,15 +26,13 @@ public class Board : MonoBehaviour
     [SerializeField]
     Tilemap groundTilemap = default;
 
-    // tilemap containing solution spaces
-    //  - these also count as "ground spaces" that you can walk on and determine the size of the board
+    // tile for solution spaces
     [SerializeField]
-    Tilemap solutionTilemap = default;
+    Tile solutionTile = default;
 
-    // tilemap containing rotater spaces
-    //  - these determine where the hero can rotate the board from
+    // tile for rotation spaces
     [SerializeField]
-    Tilemap rotaterTilemap = default; 
+    Tile rotaterTile = default; 
 
     // grid for the board
     Grid grid;
@@ -102,19 +100,19 @@ public class Board : MonoBehaviour
             {
                 Vector2Int position = new Vector2Int(x, y);
                 
-                if (hasTile(groundTilemap, position))
+                Tile tile = getTile(groundTilemap, position);
+                if (tile != null)
                 {
                     ground[x, y] = true;
-                }
-                if (hasTile(solutionTilemap, position))
-                {
-                    ground[x, y] = true;
-                    solutions.Add(position);
-                }
-                if (hasTile(rotaterTilemap, position))
-                {
-                    ground[x, y] = true;
-                    rotaters.Add(position);
+
+                    if (tile == solutionTile)
+                    {
+                        solutions.Add(position);
+                    }
+                    else if (tile == rotaterTile)
+                    {
+                        rotaters.Add(position);
+                    }
                 }
             }
         }
@@ -137,7 +135,7 @@ public class Board : MonoBehaviour
     //    i.e. the right edge of the board is the furthest right edge of any of the tilemaps
     void determineBoardSize()
     {
-        Tilemap[] tilemaps = new[] { groundTilemap, solutionTilemap, rotaterTilemap };
+        Tilemap[] tilemaps = new[] { groundTilemap };
 
         Vector2Int min = new Vector2Int(int.MaxValue, int.MaxValue);  //bottom right corner
         Vector2Int max = new Vector2Int(int.MinValue, int.MinValue);  //top left corner
@@ -166,13 +164,13 @@ public class Board : MonoBehaviour
     }
 
     // checks if a tilemap has a tile at the given logical position
-    bool hasTile(Tilemap tilemap, Vector2Int logicalPosition)
+    Tile getTile(Tilemap tilemap, Vector2Int logicalPosition)
     {
-        if (tilemap == null) { return false; }
+        if (tilemap == null) { return null; }
 
-        // tilemap.HasTile accepts a Vector3Int cell position, so convert to that
+        // tilemap.GetTile accepts a Vector3Int cell position, so convert to that
         Vector3Int cellPosition = v3(logicalPosition + cellOrigin);
-        return tilemap.HasTile(cellPosition);
+        return tilemap.GetTile<Tile>(cellPosition);
     }
 
     // registers a piece on the board for the first time, setting it at its initial position
